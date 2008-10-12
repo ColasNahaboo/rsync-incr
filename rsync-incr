@@ -3,7 +3,7 @@ set -a
 EXT=past
 USAGE='rsync-incr [options] N sourcedir(maybe remote) destdir(local)
 
-rsync-incr 1.1 is a wrapper shell script around rsync to perform automated,
+rsync-incr 1.2 is a wrapper shell script around rsync to perform automated,
 unattended, incremental, disk to disk backups, automatically removing old
 backups to make room for new ones. It produces standard mirror copies
 browsable and restorable without specific tools.
@@ -79,7 +79,7 @@ See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
           http://www.perusion.com/misc/Snapback2/snapback2.html
 	  http://hacks.oreilly.com/pub/h/42
 (c) Colas Nahaboo, http://colas.nahaboo.net, GNU General Public License
-Version 1.1, 2005-03-25
+Version 1.2, 2006-06-21
 '
 # -H optional
 rsync="rsync -Sax --delete --force"
@@ -133,7 +133,7 @@ if test -d "$destold"; then
       case "$i" in *[0-9]m) psize="${i##*-}";psize="${psize%m}"
         case pbsm in 
 	  *m) let "psize += ${pbsm%m}";;
-	  *)  let "psize = (pzise*(100 + $pbsm))/100";;
+	  *)  let "psize = (psize*(100 + $pbsm))/100";;
         esac
         if let 'psize>n'; then n=$psize; fi
       ;; esac
