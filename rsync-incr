@@ -3,7 +3,7 @@ set -a
 EXT=past
 USAGE='rsync-incr [options] N sourcedir(maybe remote) destdir(local)
 
-rsync-incr 1.2 is a wrapper shell script around rsync to perform automated,
+rsync-incr 1.3 is a wrapper shell script around rsync to perform automated,
 unattended, incremental, disk to disk backups, automatically removing old
 backups to make room for new ones. It produces standard mirror copies
 browsable and restorable without specific tools.
@@ -70,8 +70,8 @@ Special non-rsync options:
 To restore a backup, use standard rsync (trailing slashes are IMPORTANT):
   rsync -HSax --delete --force dest/ source/
 
-Rsync errors are propagated (the script exists with rsync exit status), execpt
-for the eroor #24 which is trapped, as this error can happen on backups of
+Rsync errors are propagated (the script exists with rsync exit status), except
+for the error #24 which is trapped, as this error can happen on backups of
 live systems (being modified while backuped)
 
 See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
@@ -79,7 +79,7 @@ See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
           http://www.perusion.com/misc/Snapback2/snapback2.html
 	  http://hacks.oreilly.com/pub/h/42
 (c) Colas Nahaboo, http://colas.nahaboo.net, GNU General Public License
-Version 1.2, 2006-06-21
+Version 1.3, 2006-08-08
 '
 # -H optional
 rsync="rsync -Sax --delete --force"
@@ -88,12 +88,13 @@ export RSYNC_RSH="${RSYNC_RSH:-rsh}" # for 2.6.3, where ssh is the default
 pbsm=10
 
 #------------------------------------------------------------------ options
-options=;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
+option_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
+declare -a options
 while test -z "${1##-*}" -a -n "$1";do case "$1" in
   --snap) snapshot=true;; --nohl) hardlinks=;; --cbf)do_gzip=true;;
   --grem) global_remove=true;;
   --pbsm=*) pbsm="${1##*=}";;
-  *) options="$options $1";;
+  *) options[options_n]="$1"; let options_n++;;
 esac;shift;done
 
 n="${1%[mM]}"; source="${2%%/}"; dest="${3%%/}"
@@ -170,7 +171,7 @@ if test -z "$last_date"; then last_date=`date -d '-1 sec' +'%Y-%m-%d.%Hh%M'`; fi
 status=0
 if $snapshot; then		# full snapshot style
   if test -d "$dest"; then mv "$dest" "$destold/$last_date"; fi
-  $rsync $options --link-dest="$destold/$last_date" "$source"/ "$dest/"
+  $rsync "${options[@]}" --link-dest="$destold/$last_date" "$source"/ "$dest/"
   status=$?
   if test -d "$destold/$last_date"; then
     # size: we must find block size and add the rounded sizes of non-link files
@@ -181,7 +182,7 @@ if $snapshot; then		# full snapshot style
   fi
 else				# just archive copy of changed files
   # the grep is a fix for rsync 2.6.2+ bug
-  $rsync $hardlinks $options --backup --backup-dir="$destold/$last_date" \
+  $rsync $hardlinks "${options[@]}" --backup --backup-dir="$destold/$last_date" \
     "$source"/ "$dest/" |\
     grep -v '^rsync: mkdir ".*" failed: File exists [(]17[)]' 
   status=${PIPESTATUS[0]}
