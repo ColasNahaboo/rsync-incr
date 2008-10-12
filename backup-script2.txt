@@ -1,0 +1,90 @@
+#!/bin/bash
+# this script is auto-run on start of the backup server: it connects to the 
+# main server (named "m"), backups, and halts the backup server
+# It does it in 2 paralled processes impacting disks on different controllers
+# for added speed
+# Only m root partition is done incrementally
+#
+# does a halt at end if /tmp/NOHALT do not exists on backup
+# do not start if /tmp/NOBACK exists on host
+# keep log of last backup storage
+shopt -s extglob
+shopt -s nullglob
+set -a
+email=your.name@here.com
+PATH=/usr/local/bin:$PATH
+RSYNC_RSH=rsh
+TIMEFORMAT='Time elapsed: %0lR'
+
+#misc utils, needs extglob
+trim_spaces () {
+  local __trim_spaces="${!1//#+( )/}"; __trim_spaces="${__trim_spaces//%+( )/}"
+  export $1="$__trim_spaces"
+}
+idate () { date +'%Y-%m-%d,%T'; }
+title () { 
+  if test "x-n" = "x$1";then shift;else echo;fi; local s="$*";local sl=${#s}
+  while let 'sl<78';do echo -n =; let sl++;done;echo " $s"
+}
+rsync_mirror () { rsync -aSxH --delete --force "$@"; }
+rsync_mirror_nohl () { rsync -aSx --delete --force "$@"; }
+export -f  trim_spaces idate title rsync_mirror rsync_mirror_nohl
+
+rm -f /tmp/NOBACK;rcp root@m:/tmp/NOBACK tmp
+if test -e /tmp/NOBACK; then exit 0; fi
+
+# logs and last store used go to /var/log/backup, which should exist
+logs=/var/log/backup
+mkdir -p $logs
+
+cp /usr/local/bin/backup2backup $logs
+# 3 threads: 1 2 root / 3 4 / root2 5 6, then wait and incr alone
+# or 2 threads: 1 2 root incr /  root2 5 6 3 4
+# http://www.mikerubel.org/computers/rsync_snapshots/#Incremental
+(title "Starting backup at `idate`";echo "DF: `df -ml`"; d1=`date +%s` 
+
+# Thread 1 mougins primary controller
+( echo "Backuping incr at `idate`: ";time rsync-incr 10000m root@m:/. /b/incr/root
+  echo "Backuping /1 at `idate`: "; time rsync_mirror root@m:/1/. /b/1
+  echo "Backuping /2 at `idate`: "; time rsync_mirror root@m:/2/. /b/2
+  echo "Backuping /3 at `idate`: "; time rsync_mirror root@m:/3/. /b/3
+  echo "Backuping /4 at `idate`: "; time rsync_mirror root@m:/4/. /b/4
+) >$logs/log-t1 2>&1 &
+
+#Thread 2 mougins secondary controller
+( echo "Backuping /5 at `idate`: "; time rsync_mirror root@m:/5/. /b/5
+  echo "Backuping /6 at `idate`: "
+    time rsync_mirror_nohl --exclude='/emule/temp/[0-9]*' root@m:/6/ /b/6/
+# echo "Backuping root2 at `idate`: "; time rsync_mirror /. /b/incr/root2
+  echo "Backuping /8 at `idate`: "; time rsync_mirror root@m:/8/. /b/8  
+) >$logs/log-t2 2>&1 &
+wait
+title Log Thread 1; cat $logs/log-t1
+title Log Thread 2; cat $logs/log-t2
+title "Temperatures:"; hddtemp /dev/hd[a-h]
+title "Root incr"; ls -1d /b/incr/root.past/[0-9]*
+title "Ending backup at `idate`"
+d2=`date +%s`; let dd=d2-d1 
+echo -n "Total time elapsed: ";date -d "1970-01-01 $dd sec" +'%kh %Mmn %Ss'   
+echo
+
+echo "DF: `df -ml`" 
+) >$logs/log.last 2>&1
+
+mv $logs/disks_errors $logs/disks_errors.old
+for i in /dev/hd[a-h];do title $i;smartctl -l error $i;done>$logs/disks_errors
+if ! cmp $logs/disks_errors.old $logs/disks_errors; then
+  title "*** NEW DISK ERRORS ***" 
+  diff $logs/disks_errors.old $logs/disks_errors
+fi
+
+cat $logs/log.last >>$logs/log
+mail -s "M backups `idate`" $email <$logs/log.last
+sync; rsync -a $logs/log $logs/log.last root@m:$logs
+
+if [ -e /tmp/NOHALT ]; then rm -f /tmp/NOHALT; else halt; fi
+
+### EMACS MODES
+### Local Variables: ***
+### mode:ksh ***
+### End: ***

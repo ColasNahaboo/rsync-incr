@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# a script run daily on the host backserv to archive incrementally various
+# machine partitions and mailing in case of errors at $email
+
+set -a
+email=servers-monitory@my.company.com
+PATH=/usr/local/bin:$PATH
+TIMEFORMAT='Time elapsed: %0lR'
+log=/var/log/backup-on-backserv
+name=/1
+days=2000m
+
+idate () { date +'%Y-%m-%d,%T'; }
+title () { 
+  if test "x-n" = "x$1";then shift;else echo;fi; local s="$*";local sl=${#s}
+  while let 'sl<72';do echo -n =; let sl++;done;echo " $s"
+}
+# [rsync-incr options] source dest
+backup () {
+  local options
+  while test -z "${1##-*}" -a -n "$1";do options="$options $1"; shift; done
+  ( title "On `idate` Backuping $1 to $2"
+    time rsync-incr $options --grem --snap --pbsm=50 $days "$@"  ) 2>&1
+}
+
+ERR () { local err="*** ERROR at `idate` on `hostname` in $*"; }
+
+remount () {
+  mode=$1;shift; for i in "$@";do
+  if ! mount -o remount,$mode $i; then ERR "remounting as $mode $i"; fi
+  done
+}
+
+mirrors () {
+  echo "Backups made by /usr/local/bin/backup-on-backserv"
+  echo '"file has vanished" messages are normal on a live system, please ignore'
+  title "On `idate`, backups STARTED"
+  export RSYNCINCR_LASTDATES=`locate LAST_DATE`
+  d1=`date +%s`
+  df -hl
+
+  # please, maintain where to backup as symlinks in /0 to /[1-9]/machine/ ...
+  remount rw /1 /2 /3 /4
+
+  backup host1:/ /0/host1/root
+  backup --exclude='/home/squid/cache/*' host1:/home /0/host1/home
+
+  backup host2:/ /0/host2/root
+  backup host2:/home /0/host2/home
+
+  backup host3:/ /0/yapok/root
+  backup host3:/boot /0/yapok/boot
+  backup host3:/home /0/yapok/home
+
+  backup --rsh=ssh host4:/ /0/host4/root
+  backup --rsh=ssh host4:/boot /0/host4/boot
+  backup --rsh=ssh host4:/home /0/host4/home
+
+  backup host5:/ /0/host5/root
+  backup host5:/0 /0/host5/0
+  backup host5:/1 /0/host5/1
+ 
+  backup host6:/ /0/host6/root 
+  backup host6:/boot /0/host6/boot
+ 
+  remount ro /1 /2 /3 /4
+  title "On `idate`, backups ENDED"
+  d2=`date +%s`; let dd=d2-d1
+  echo -n "Total time elapsed: ";date -d "1970-01-01 $dd sec" +'%kh %Mmn %Ss'  
+  echo
+
+  df -hl
+  ls  -ld /0/* | cut -c 56-
+  title state of the disks
+  hddtemp /dev/hd[a-d]
+  for i in a b c d; do
+    title disk status of hd$i
+    smartctl -a /dev/hd$i
+  done
+}
+
+mkdir -p $log
+if [ -n "$1" ]; then mirrors;else 
+  logfile=$log/`date +log-%Y-%m-%d.%H:%M.txt`
+  rm -f $log/lastlog.txt; ln -s ${logfile##*/} $log/lastlog.txt
+  mirrors >$logfile 2>&1
+  find $log -type f -mtime +100 -exec rm -f {} \;
+  if fgrep -q '*** ERROR' $logfile; then
+    mail -s "backserv backup errors" $email <$logfile
+  fi
+fi

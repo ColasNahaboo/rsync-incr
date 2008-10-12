@@ -1,0 +1,207 @@
+#!/bin/bash
+set -a
+VERSION=1.0
+EXT=past
+USAGE="rsync-incr [options] N sourcedir(maybe remote) destdir(local)
+
+rsync-incr v$VERSION is a linux wrapper shell (bash) script around rsync to
+perform automated, unattended, incremental, disk to disk backups,
+automatically removing old backups to make room for new ones. It produces
+standard mirror copies browsable and restorable without specific tools.
+
+rsync-incr will create destdir as a perfect mirror, and save in destdir.$EXT 
+  a directory per run with copies of changed files old versions. 
+  These N (at most) directories of old versions of changed files are named by
+  their dates in the form destdir.$EXT/YYYY-MM-DD.HHhMN-SIZEm
+  e.g: /backups/home.$EXT/2005-01-24.04h23-122m
+  Date of last backup is in the contents of file destdir.$EXT/LAST_DATE.
+  No need to apend trailing / to source and destination.
+  Dest must be on the local machine (maybe NFS-mounted), source can be on a 
+    remote machine via the syntax host:dir
+  SIZE in name is the disk space taken that this backup, in megabytes, before
+    an optional compression via --cbf, to help you find the good value of Nm
+    (e.g: the max of past SIZEs), as this size is hard to find in --snap mode
+    SIZE is rounded to upper bound: 0m means 0 bytes, 2m less than 2m
+
+This a simple script, making backups usables by standard rsync (no need for a
+dedicated restore script). It has 2 basic modes of operation:
+  default: make a perfect copy, of all hard links, devices, sparse files, and
+    just stores in dirs the previous versions of only the changed files. 
+    This makes it easy to find the different states a files went through, but 
+    make it harder to get a perfect snapshot of what was the full state N 
+    days before.
+  --snap: makes full snapshots of what the source was like at backup times as 
+    described in http://www.mikerubel.org/computers/rsync_snapshots
+    It is easier to get to full snapshots of previous states, and should run 
+    faster than the default.
+
+If N has \"m\" appended (2m, 34m, ..) old versions are removed 
+  before backup until we have at least N megabytes free on dest, and the max
+  of space taken by previous backups (+ 10%, see --pbsm). 
+  Otherwise, just keep the last N backups.
+
+Options are pased to rsync, but must not in 2 parts (use --rsh=ssh, not -e ssh)
+  e.g: rsync-incr -z --bwlimit=12 --rsh=ssh server:/home/me /backups/me
+  (this will create an perfect backup in /backups/me and a series of previous
+   versions as dirs like /backups/me.past/2004-10-26.04:40:20-234 ...)
+  rsync-incr sets rsync options: -HSax --delete --force
+
+Special non-rsync options:
+  --nohl  do not use the -H / --hard-links option (do not preserve hard links),
+          faster if you do not need to preserve hard links.
+  --cbf   compresses (gzip -r) all backuped files (will not compress files 
+          with hard links)
+  --snap  old backups are full snapshots of previous stats, as in 
+          http://www.mikerubel.org/computers/rsync_snapshots/#Incremental
+	  but this do not preserve hard links
+  --grem  global remove: with m appended to N, (i.e., N given as a number of
+          megabytes), will remove oldest backups globally on the filesystem
+          (otherwise space-making on a small backup could be wiped out because
+          of bigger backups). 
+          You should place a list (one per line) of all the absolute paths of
+          LAST_DATE files on the system in the env variable 
+          RSYNCINCR_LASTDATES, for instance by a statement:
+	    export RSYNCINCR_LASTDATES=`locate LAST_DATE`
+	  otherwise a global find will be used, which can be very slow.
+	  It will only remove backups on same filesystem as destdir, so you
+	  can list all LAST_DATE paths on all disks.
+  --pbsm=P Previous Backups Space Margin: reserve space before backup for at
+          least the max size of previous backups + P% (P default to 10).
+	  If P ends with \"m\" (like 7m) it is taken as P megabytes to add
+	  rather as a percentage.
+
+To restore a backup, use standard rsync (trailing slashes are IMPORTANT):
+  rsync -HSax --delete --force dest/ source/
+
+Rsync errors are propagated (the script exists with rsync exit status), except
+for the error #24 which is trapped, as this error can happen on backups of
+live systems (being modified while backuped)
+
+See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
+          http://www.mikerubel.org/computers/rsync_snapshots
+          http://www.perusion.com/misc/Snapback2/snapback2.html
+	  http://hacks.oreilly.com/pub/h/42
+(c) Colas Nahaboo, http://colas.nahaboo.net, GNU General Public License
+
+Homedir: http://colas.nahaboo.net/software/rsync-incr
+"
+# -H optional
+rsync="rsync -Sax --delete --force"
+shopt -s nullglob
+export RSYNC_RSH="${RSYNC_RSH:-rsh}" # for 2.6.3, where ssh is the default
+pbsm=10
+
+#------------------------------------------------------------------ options
+options=;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
+while test -z "${1##-*}" -a -n "$1";do case "$1" in
+  --snap) snapshot=true;; --nohl) hardlinks=;; --cbf)do_gzip=true;;
+  --grem) global_remove=true;;
+  --pbsm=*) pbsm="${1##*=}";;
+  *) options="$options $1";;
+esac;shift;done
+
+n="${1%[mM]}"; source="${2%%/}"; dest="${3%%/}"
+if test "$n" = "$1"; then checkspace=false;else checkspace=true; fi
+if test "$#" != 3; then 
+   echo "$USAGE";exit 1;fi
+if let 'n<=1'; then echo "$USAGE
+N must be > 1";exit 1;fi
+
+#------------------------------------------------------------------ utils
+fsof () { df "$1" |tail -1|cut -f 1 -d ' '; }
+rootof () { df "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
+find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
+dfof () { df -m "$1" |grep '^/'|awk '{print $4}'; }
+remdir () { echo "Removing old backup: $1"; rm -rf "$1"; }
+
+# list all old backups on filesystem, one per line, oldest first
+backup_siblings () {
+  local fs=`fsof "$1"` ld d b
+  echo "$RSYNCINCR_LASTDATES" | while read ld; do
+    if test `fsof "$ld"` = $fs; then
+      d="${ld%/*}"
+      ls -1 "$d" | while read b;do
+	case "$b" in [0-9][0-9][0-9][0-9]-[01][0-9]-[1-3][0-9][.:][0-2][0-9][h:][0-6][0-9][-:]*) echo "$b $d/$b";;
+	esac
+      done
+    fi
+  done | sort | cut -f 2 -d ' '
+}
+
+#--------------------------------------------------------- clean old backups
+case "$dest" in /*)destold="$dest.$EXT";;*)destold="$PWD/$dest.$EXT";; esac
+mkdir -p "$destold"
+if test -d "$destold"; then
+  if $checkspace; then # remove old versions till we have space
+    for i in "$destold/"[0-9]*; do  # take max of N and past backups
+      case "$i" in *[0-9]m) psize="${i##*-}";psize="${psize%m}"
+        case pbsm in 
+	  *m) let "psize += ${pbsm%m}";;
+	  *)  let "psize = (pzise*(100 + $pbsm))/100";;
+        esac
+        if let 'psize>n'; then n=$psize; fi
+      ;; esac
+    done
+    if $global_remove; then # filesystem-global remove
+      if test -z "$RSYNCINCR_LASTDATES"; then # slow default, always work
+	RSYNCINCR_LASTDATES=`find_ld "$destold"`
+      fi
+      freespace=`dfof "$destold"`
+      if let 'freespace<n'; then
+	backup_siblings "$destold" | while read f; do
+	  freespace=`dfof "$destold"`
+	  if let 'freespace>=n'; then break; else remdir "$f"; fi
+        done
+      fi
+    else # just remove in dest dir
+      for f in "$destold/"[0-9]*; do
+	freespace=`dfof "$destold"`
+	if let 'freespace>=n'; then break; else remdir "$f"; fi
+      done
+    fi
+  else				# remove more than N backups
+    p=1
+    for f in `for i in "$destold/"[0-9]*; do echo "$i";done|tac`; do
+      if let 'p>=n'; then remdir "$f"; fi; let p++
+    done
+  fi
+fi
+
+#------------------------------------------------------------ perform backup
+if test -e "$destold/LAST_DATE";then last_date=`cat "$destold/LAST_DATE"`;fi
+if test -z "$last_date"; then last_date=`date -d '-1 sec' +'%Y-%m-%d.%Hh%M'`; fi
+
+status=0
+if $snapshot; then		# full snapshot style
+  if test -d "$dest"; then mv "$dest" "$destold/$last_date"; fi
+  $rsync $options --link-dest="$destold/$last_date" "$source"/ "$dest/"
+  status=$?
+  if test -d "$destold/$last_date"; then
+    # size: we must find block size and add the rounded sizes of non-link files
+    nb=$(dumpe2fs `df "$destold"|tail -1|(read d r;echo $d)` 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
+    if let 'nb<=0'; then nb=2;fi
+    size=$(find "$destold/$last_date" -type d -o \( -type f -links 1 \) -printf '%b\n'|(t=0;while read d;do let t='t+((d+(nb-1))/nb)*nb';done;let tk=t/2;echo $tk) )
+    if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
+  fi
+else				# just archive copy of changed files
+  # the grep is a fix for rsync 2.6.2+ bug
+  $rsync $hardlinks $options --backup --backup-dir="$destold/$last_date" \
+    "$source"/ "$dest/" |\
+    grep -v '^rsync: mkdir ".*" failed: File exists [(]17[)]' 
+  status=${PIPESTATUS[0]}
+  if test -d "$destold/$last_date"; then 
+    size=`du -ks "$destold/$last_date"|(read s r;echo $s)`
+    if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
+  fi
+fi
+if test -e "$destold/$last_date"; then 
+  let msize='(size+1023)/1024'
+  mv "$destold/$last_date" "$destold/$last_date-${msize}m"
+fi
+date +'%Y-%m-%d.%Hh%M' >"$destold/LAST_DATE"
+if test "$status" = 0 -o "$status" = 24; then
+  exit 0
+else
+  echo "*** ERROR: rsync returned code $status" 1>&2
+  exit $status
+fi
