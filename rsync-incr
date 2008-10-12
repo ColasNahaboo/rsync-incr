@@ -1,90 +1,23 @@
 #!/bin/bash
 set -a
-EXT=past
-USAGE='rsync-incr [options] N sourcedir(maybe remote) destdir(local)
+VERSION=1.5
+DATE=2008-10-12
 
-rsync-incr 1.4 is a wrapper shell script around rsync to perform automated,
+USAGE="rsync-incr [options] N sourcedir destdir
+rsync-incr is a wrapper shell script around rsync to perform automated,
 unattended, incremental, disk to disk backups, automatically removing old
 backups to make room for new ones. It produces standard mirror copies
 browsable and restorable without specific tools.
-
-rsync-incr will create dest as a perfect mirror, and save in dest.$EXT 
-  a directory per run with copies of changed files old versions. 
-  These N (at most) directories of old versions of changed files are named by
-  their dates in the form YYY-MM-DD.HHhMN-SIZEm
-  Date of last backup is in file dest.$EXT/LAST_DATE.
-  No need to apend trailing / to source and dest.
-  Dest must be on the local machine (maybe NFS-mounted), source can be on a 
-    remote machine via the syntax host:dir
-  SIZE in name is the disk space taken that this backup, in megabytes, before
-    an optional compression via --cbf, to help you find the good value of Nm
-    (e.g: the max of past SIZEs), as this size is hard to find in --snap mode
-    SIZE is rounded to upper bound: 0m means 0 bytes, 2m less than 2m
-
-This a simple script, making backups usables by standard rsync (no need for a
-dedicated restore script). It has 2 basic modes of operation:
-  default: make a perfect copy, of all hard links, devices, sparse files, and
-    just stores in dirs the previous versions of only the changed files. 
-    This makes it easy to find the different states a files went through, but 
-    make it harder to get a perfect snapshot of what was the full state N 
-    days before.
-  --snap: makes full snapshots of what the source was like at backup times as 
-    described in http://www.mikerubel.org/computers/rsync_snapshots
-    It is easier to get to full snapshots of previous states, and should run 
-    faster than the default.
-
-If N has "m" appended (2m, 34m, ..) old versions are removed 
-  before backup until we have at least N megabytes free on dest, and the max
-  of space taken by previous backups (+ 10%, see --pbsm). 
-  Otherwise, just keep the last N backups.
-
-Options are pased to rsync, but must not in 2 parts (use --rsh=ssh, not -e ssh)
-  e.g: rsync-incr -z --bwlimit=12 --rsh=ssh server:/home/me /backups/me
-  (this will create an perfect backup in /backups/me and a series of previous
-   versions as dirs like /backups/me.past/2004-10-26.04:40:20-234 ...)
-  rsync-incr sets rsync options: -HSax --delete --force
-
-Special non-rsync options:
-  --nohl  do not use the -H / --hard-links option (do not preserve hard links),
-          faster if you do not need to preserve hard links.
-  --cbf   compresses (gzip -r) all backuped files (will not compress files 
-          with hard links)
-  --snap  old backups are full snapshots of previous stats, as in 
-          http://www.mikerubel.org/computers/rsync_snapshots/#Incremental
-	  but this do not preserve hard links
-  --grem  global remove: with m appended to N, will remove oldest backups 
-          globally on the filesystem (otherwise space-making on a small 
-          backup could be wiped out because of bigger backups). You should
-	  place a list (one per line) of all the absolute paths of LAST_DATE
-	  files on the system in the env variable RSYNCINCR_LASTDATES, by
-	  for instance by a statement:
-	    export RSYNCINCR_LASTDATES=`locate LAST_DATE`
-	  otherwise a global find will be used, which can be very slow.
-	  It will only remove backups on same filesystem as dest, so you
-	  can list all LAST_DATE paths on all disks.
-  --pbsm=P Previous Backups Space Margin: reserve space before backup for at
-          least the max size of previous backups + P% (P default to 10).
-	  If P ends with "m" (like 7m) it is taken as P megabytes to add
-	  rather as a percentage.
-
-To restore a backup, use standard rsync (trailing slashes are IMPORTANT):
-  rsync -HSax --delete --force dest/ source/
-
-Rsync errors are propagated (the script exists with rsync exit status), except
-for the error #24 which is trapped, as this error can happen on backups of
-live systems (being modified while backuped)
-
-See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
-          http://www.mikerubel.org/computers/rsync_snapshots
-          http://www.perusion.com/misc/Snapback2/snapback2.html
-	  http://hacks.oreilly.com/pub/h/42
 (c) Colas Nahaboo, http://colas.nahaboo.net, GNU General Public License
-Version 1.4, 2007-02-26
-'
+Version $VERSION, $DATE
+See documentation at http://colas.nahaboo.net/Software/RsyncIncr
+"
+
 # -H optional
 rsync="rsync -Sax --delete --force"
 shopt -s nullglob
 export RSYNC_RSH="${RSYNC_RSH:-rsh}" # for 2.6.3, where ssh is the default
+EXT=past
 pbsm=10
 
 #------------------------------------------------------------------ options
