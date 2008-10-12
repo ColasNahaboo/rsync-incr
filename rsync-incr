@@ -3,7 +3,7 @@ set -a
 EXT=past
 USAGE='rsync-incr [options] N sourcedir(maybe remote) destdir(local)
 
-rsync-incr 1.3 is a wrapper shell script around rsync to perform automated,
+rsync-incr 1.4 is a wrapper shell script around rsync to perform automated,
 unattended, incremental, disk to disk backups, automatically removing old
 backups to make room for new ones. It produces standard mirror copies
 browsable and restorable without specific tools.
@@ -79,7 +79,7 @@ See also: http://samba.anu.edu.au/ftp/rsync/rsync.html
           http://www.perusion.com/misc/Snapback2/snapback2.html
 	  http://hacks.oreilly.com/pub/h/42
 (c) Colas Nahaboo, http://colas.nahaboo.net, GNU General Public License
-Version 1.3, 2006-08-08
+Version 1.4, 2007-02-26
 '
 # -H optional
 rsync="rsync -Sax --delete --force"
@@ -105,10 +105,10 @@ if let 'n<=1'; then echo "$USAGE
 N must be > 1";exit 1;fi
 
 #------------------------------------------------------------------ utils
-fsof () { df "$1" |tail -1|cut -f 1 -d ' '; }
-rootof () { df "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
+fsof () { df -P "$1" |tail -1|cut -f 1 -d ' '; }
+rootof () { df -P "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
 find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
-dfof () { df -m "$1" |grep '^/'|awk '{print $4}'; }
+dfof () { df -mP "$1" |grep '^/'|awk '{print $4}'; }
 remdir () { echo "Removing old backup: $1"; rm -rf "$1"; }
 
 # list all old backups on filesystem, one per line, oldest first
@@ -175,7 +175,7 @@ if $snapshot; then		# full snapshot style
   status=$?
   if test -d "$destold/$last_date"; then
     # size: we must find block size and add the rounded sizes of non-link files
-    nb=$(dumpe2fs `df "$destold"|tail -1|(read d r;echo $d)` 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
+    nb=$(dumpe2fs `df -P "$destold"|tail -1|(read d r;echo $d)` 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
     if let 'nb<=0'; then nb=2;fi
     size=$(find "$destold/$last_date" -type d -o \( -type f -links 1 \) -printf '%b\n'|(t=0;while read d;do let t='t+((d+(nb-1))/nb)*nb';done;let tk=t/2;echo $tk) )
     if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
