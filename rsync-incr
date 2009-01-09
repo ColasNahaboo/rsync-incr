@@ -124,7 +124,8 @@ if $snapshot; then		# full snapshot style
   fi
 else				# just archive copy of changed files
   # the grep is a fix for rsync 2.6.2+ bug
-  $rsync $hardlinks "${options[@]}" --backup --backup-dir="$destold/$last_date" \
+  $rsync $hardlinks \
+    "${options[@]}" --backup --backup-dir="$destold/$last_date" \
     "$source"/ "$dest/" |\
     grep -v '^rsync: mkdir ".*" failed: File exists [(]17[)]' 
   status=${PIPESTATUS[0]}
