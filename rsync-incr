@@ -1,7 +1,7 @@
 #!/bin/bash
 set -a
-VERSION=1.6
-DATE=2008-12-19
+VERSION=1.7
+DATE=2009-01-09
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -110,7 +110,9 @@ if test -z "$last_date"; then last_date=`date -d '-1 sec' +'%Y-%m-%d.%Hh%M'`; fi
 
 status=0
 if $snapshot; then		# full snapshot style
-  if test -d "$dest"; then mv "$dest" "$destold/$last_date"; fi
+  if test -d "$dest" -a ! -e "$destold/$last_date"; then 
+    mv "$dest" "$destold/$last_date"
+  fi
   $rsync "${options[@]}" --link-dest="$destold/$last_date" "$source"/ "$dest/"
   status=$?
   if test -d "$destold/$last_date"; then
