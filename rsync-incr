@@ -1,7 +1,7 @@
 #!/bin/bash
 set -a
-VERSION=1.7
-DATE=2009-01-09
+VERSION=1.8
+DATE=2009-01-10
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -65,7 +65,7 @@ backup_siblings () {
 
 #--------------------------------------------------------- clean old backups
 case "$dest" in /*)destold="$dest.$EXT";;*)destold="$PWD/$dest.$EXT";; esac
-mkdir -p "$destold"
+mkdir -p "$dest" "$destold"
 if test -d "$destold"; then
   if $checkspace; then # remove old versions till we have space
     for i in "$destold/"[0-9]*; do  # take max of N and past backups
