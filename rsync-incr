@@ -95,6 +95,7 @@ if test -d "$destold"; then
 	if let 'freespace>=n'; then break; else remdir "$freespace" "$f"; fi
       done
     fi
+    echo "Free space is $freespace M, ok"
   else				# remove more than N backups
     p=1
     for f in `for i in "$destold/"[0-9]*; do echo "$i";done|tac`; do
