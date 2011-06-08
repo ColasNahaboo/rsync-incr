@@ -16,7 +16,7 @@ See documentation at http://colas.nahaboo.net/Software/RsyncIncr
 # -H optional
 rsync="rsync -Sax --delete --force"
 shopt -s nullglob
-export RSYNC_RSH="${RSYNC_RSH:-rsh}" # for 2.6.3, where ssh is the default
+export RSYNC_RSH="${RSYNC_RSH:-ssh}" # for 2.6.3, where ssh is the default
 EXT=past
 pbsm=10
 
