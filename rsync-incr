@@ -1,7 +1,7 @@
 #!/bin/bash
 set -a
 VERSION=1.8
-DATE=2009-01-10
+DATE=2011-07-11
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -14,7 +14,7 @@ See documentation at http://colas.nahaboo.net/Software/RsyncIncr
 "
 
 # -H optional
-rsync="rsync -Sax --delete --force"
+rsync="rsync -Sa --delete --force"
 shopt -s nullglob
 export RSYNC_RSH="${RSYNC_RSH:-ssh}" # for 2.6.3, where ssh is the default
 EXT=past
@@ -24,10 +24,12 @@ pbsm=10
 option_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
 only_clean=false
 declare -a options
+no_cross_devs=true
 while test -z "${1##-*}" -a -n "$1";do case "$1" in
   --snap) snapshot=true;; --nohl) hardlinks=;; --cbf)do_gzip=true;;
   --grem) global_remove=true;;
   --pbsm=*) pbsm="${1##*=}";;
+  --cross-devs) no_cross_devs=false;;
   --clean) only_clean=true;;
   *) options[options_n]="$1"; let options_n++;;
 esac;shift;done
@@ -38,6 +40,7 @@ if test "$#" != 3; then
    echo "$USAGE";exit 1;fi
 if let 'n<=1'; then echo "$USAGE
 N must be > 1";exit 1;fi
+if $no_cross_devs; then options[options_n]="-x"; let options_n++; fi
 
 #------------------------------------------------------------------ utils
 fsof () { df -P "$1" |tail -1|cut -f 1 -d ' '; }
