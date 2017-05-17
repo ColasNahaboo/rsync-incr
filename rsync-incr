@@ -48,8 +48,13 @@ rootof () { df -P "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
 find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
 dfof () { df -mP "$1" |tail -1|awk '{print $4}'; }
 remdir () { 
+  local empty=/tmp/empty-dir-for-rsync.$LOGNAME
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
-  echo "Removing old backup: $2"; rm -rf "$2"; 
+  echo "Removing old backup: $2"
+  # fast rm ,see https://unix.stackexchange.com/questions/106133/why-is-rm-slow
+  mkdir -p /tmp/$empty
+  rsync -a --delete empty/ "$2"/
+  rm -rf "$2"; 
 }
 
 # list all old backups on filesystem, one per line, oldest first
