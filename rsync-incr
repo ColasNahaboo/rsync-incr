@@ -52,8 +52,8 @@ remdir () {
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
   echo "Removing old backup: $2"
   # fast rm ,see https://unix.stackexchange.com/questions/106133/why-is-rm-slow
-  mkdir -p /tmp/$empty
-  rsync -a --delete empty/ "$2"/
+  mkdir -p $empty
+  rsync -a --delete $empty/ "$2"/
   rm -rf "$2"; 
 }
 
