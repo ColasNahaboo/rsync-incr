@@ -52,7 +52,7 @@ remdir () {
   local empty=/tmp/empty-dir-for-rsync.$LOGNAME
   local path=$(realpath "$1")
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
-  fgrep -xq "$path" $dellog && return # is being deleted by another instance
+  fgrep -xqs "$path" $dellog && return # is being deleted by another instance
   echo "$path" >>$dellog
   echo "Removing old backup: $2"
   # fast rm ,see https://unix.stackexchange.com/questions/106133/why-is-rm-slow
