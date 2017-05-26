@@ -19,6 +19,7 @@ shopt -s nullglob
 export RSYNC_RSH="${RSYNC_RSH:-ssh}" # for 2.6.3, where ssh is the default
 EXT=past
 pbsm=10
+export dellog=/tmp/rsync-incr-deletions.$LOGNAME
 
 #------------------------------------------------------------------ options
 option_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
@@ -49,7 +50,10 @@ find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
 dfof () { df -mP "$1" |tail -1|awk '{print $4}'; }
 remdir () { 
   local empty=/tmp/empty-dir-for-rsync.$LOGNAME
+  local path=$(realpath "$1")
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
+  fgrep -xq "$path" $dellog && return # is being deleted by another instance
+  echo "$path" >>$dellog
   echo "Removing old backup: $2"
   # fast rm ,see https://unix.stackexchange.com/questions/106133/why-is-rm-slow
   mkdir -p $empty
