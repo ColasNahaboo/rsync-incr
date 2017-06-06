@@ -150,7 +150,7 @@ fi
 if test -e "$destold/$last_date"; then 
   let msize='(size+1023)/1024'
   mv "$destold/$last_date" "$destold/$last_date-${msize}m"
-  echo "Size used by this backup: $size m"
+  echo "Size used by this backup: $msize m"
 fi
 date +'%Y-%m-%d.%Hh%M' >"$destold/LAST_DATE"
 if test "$status" = 0 -o "$status" = 24; then
