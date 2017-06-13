@@ -26,12 +26,14 @@ option_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
 only_clean=false
 declare -a options
 no_cross_devs=true
+inodespcmaxpc=95
 while test -z "${1##-*}" -a -n "$1";do case "$1" in
   --snap) snapshot=true;; --nohl) hardlinks=;; --cbf)do_gzip=true;;
   --grem) global_remove=true;;
   --pbsm=*) pbsm="${1##*=}";;
   --cross-devs) no_cross_devs=false;;
   --clean) only_clean=true;;
+  --inodes=*) inodespcmaxpc="${1##*=}";;
   *) options[options_n]="$1"; let options_n++;;
 esac;shift;done
 
@@ -41,6 +43,7 @@ if test "$#" != 3; then
    echo "$USAGE";exit 1;fi
 if let 'n<=1'; then echo "$USAGE
 N must be > 1";exit 1;fi
+let '( inodespcmaxpc > 50 ) && ( inodespcmaxpc < 100 )' || { echo "Option --inodes=N must have N between 50 and 99, not $inodespcmaxpc"; exit 1; }
 if $no_cross_devs; then options[options_n]="-x"; let options_n++; fi
 
 #------------------------------------------------------------------ utils
@@ -48,6 +51,16 @@ fsof () { df -P "$1" |tail -1|cut -f 1 -d ' '; }
 rootof () { df -P "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
 find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
 dfof () { df -mP "$1" |tail -1|awk '{print $4}'; }
+inodesok () { 
+  local ipc=$(df -imP "$1" |tail -1|grep -oP ' \K[0-9]+(?=%)')
+  if let 'ipc > inodespcmaxpc'; then 
+    echo "Not enough free inodes (used: $ipc%), cleaning..."
+    return 1
+  else
+    return 0
+  fi
+}
+
 remdir () { 
   local empty=/tmp/empty-dir-for-rsync.$LOGNAME
   local path=$(realpath "$1")
@@ -95,16 +108,20 @@ if test -d "$destold"; then
 	RSYNCINCR_LASTDATES=`find_ld "$destold"`
       fi
       freespace=`dfof "$destold"`
-      if let 'freespace<n'; then
+      if let 'freespace<n' || ! inodesok "$destold"; then
 	backup_siblings "$destold" | while read f; do
 	  freespace=`dfof "$destold"`
-	  if let 'freespace>=n'; then break; else remdir "$freespace" "$f"; fi
+	  if let 'freespace>=n' && inodesok "$destold"; then break
+	  else remdir "$freespace" "$f"
+	  fi
         done
       fi
     else # just remove in dest dir
       for f in "$destold/"[0-9]*; do
 	freespace=`dfof "$destold"`
-	if let 'freespace>=n'; then break; else remdir "$freespace" "$f"; fi
+	if let 'freespace>=n' && inodesok "$destold"; then break
+	else remdir "$freespace" "$f"
+	fi
       done
     fi
     echo "Free space is $freespace M, ok"
