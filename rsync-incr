@@ -63,7 +63,7 @@ inodesok () {
 
 remdir () { 
   local empty=/tmp/empty-dir-for-rsync.$LOGNAME
-  local path=$(realpath "$1")
+  local path=$(realpath "$2")
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
   fgrep -xqs "$path" $dellog && return # is being deleted by another instance
   echo "$path" >>$dellog
