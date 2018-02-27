@@ -1,6 +1,6 @@
 #!/bin/bash
 set -a
-VERSION=1.9beta
+VERSION=1.9beta2
 DATE=2017-06-13
 
 USAGE="rsync-incr [options] N sourcedir destdir
@@ -52,9 +52,11 @@ rootof () { df -P "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
 find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
 dfof () { df -mP "$1" |tail -1|awk '{print $4}'; }
 inodesok () { 
+  local silent=false
+  [ "$1" = -q ] && silent=true && shift
   local ipc=$(df -imP "$1" |tail -1|grep -oP ' \K[0-9]+(?=%)')
   if let 'ipc > inodespcmaxpc'; then 
-    echo "Not enough free inodes (used: $ipc%), cleaning..."
+    silent || echo "Not enough free inodes (used: $ipc%), cleaning..."
     return 1
   else
     return 0
@@ -108,7 +110,7 @@ if test -d "$destold"; then
 	RSYNCINCR_LASTDATES=`find_ld "$destold"`
       fi
       freespace=`dfof "$destold"`
-      if let 'freespace<n' || ! inodesok "$destold"; then
+      if let 'freespace<n' || ! inodesok -q "$destold"; then
 	backup_siblings "$destold" | while read f; do
 	  freespace=`dfof "$destold"`
 	  if let 'freespace>=n' && inodesok "$destold"; then break
