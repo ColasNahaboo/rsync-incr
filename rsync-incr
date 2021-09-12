@@ -1,7 +1,7 @@
 #!/bin/bash
 set -a
-VERSION=1.9beta3
-DATE=2018-04-03
+VERSION=1.9beta4
+DATE=2021-09-12
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -126,7 +126,7 @@ if test -d "$destold"; then
 	fi
       done
     fi
-    echo "Free space is $freespace M, ok"
+    [ -e "$destold/LAST_DATE" ] && echo "Free space is $freespace M, ok"
   else				# remove more than N backups
     p=1
     for f in `for i in "$destold/"[0-9]*; do echo "$i";done|tac`; do
