@@ -1,7 +1,9 @@
 #!/bin/bash
-USAGE='generates a version and uploads it on my web distribution dir
-that must be in $files_repository (ssh syntax)'
+USAGE="generates a version and uploads it on my web distribution dir
+that must be in \$files_repository (ssh syntax)"
 
+export files_repository
+export files_repository_url
 if test -z "$files_repository"; then echo "$USAGE"; exit 1; fi
 
 name=rsync-incr
@@ -10,16 +12,17 @@ rev=$(grep '^VERSION=' rsync-incr |head -1|sed -e 's/.*=//')
 repo=$files_repository/$name
 
 mkdir -p $dir/$name
-cp -a * $dir/$name
-cd $dir
-tar cfz /tmp/$name-$rev.tgz $name
-cd /tmp
-echo "## Ok, distribution made: `ls -sh $name-$rev.tgz`"
+cp -a -- * $dir/$name
+cd $dir || exit 1
+tar cfz "/tmp/$name-$rev.tgz" $name
+cd /tmp || exit 1
+distmade=$(ls -sh $name-"$rev".tgz)
+echo "## Ok, distribution made: $distmade"
 echo "## Uploading to $repo"
-if scp -C $name-$rev.tgz $repo/$name-$rev.tgz; then
+if scp -C "$name-$rev.tgz" "$repo/$name-$rev.tgz"; then
   echo "## Ok, at $files_repository_url/$name/$name-$rev.tgz"
 else
   echo "***** UPLOADING ERROR !!! *****"
 fi
 
-rm -rf $dir /tmp/$name-$rev.tgz
+rm -rf "$dir" "/tmp/$name-$rev.tgz"
