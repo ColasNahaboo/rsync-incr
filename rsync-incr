@@ -1,7 +1,7 @@
 #!/bin/bash
 set -a
-VERSION=1.9beta4
-DATE=2021-09-12
+VERSION=1.9beta5
+DATE=2025-01-25
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -49,7 +49,10 @@ if $no_cross_devs; then options[options_n]="-x"; let options_n++; fi
 #------------------------------------------------------------------ utils
 fsof () { df -P "$1" |tail -1|cut -f 1 -d ' '; }
 rootof () { df -P "$1" |tail -1 |sed -e 's/^[^%]*% *//'; }
-find_ld () { find `rootof "$1"` -xdev -name LAST_DATE -type f; }
+find_ld () {
+    local root=$(rootof "$1")
+    find "$root" -xdev -name LAST_DATE -type f
+}
 dfof () { df -mP "$1" |tail -1|awk '{print $4}'; }
 inodesok () { 
   local silent=false
@@ -78,9 +81,10 @@ remdir () {
 
 # list all old backups on filesystem, one per line, oldest first
 backup_siblings () {
-  local fs=`fsof "$1"` ld d b
+  local fs=$(fsof "$1") ld d b
   echo "$RSYNCINCR_LASTDATES" | while read ld; do
-    if test `fsof "$ld"` = $fs; then
+    lfs=$(fsof "$ld")
+    if [[ "$lfs" == "$fs" ]]; then
       d="${ld%/*}"
       ls -1 "$d" | while read b;do
 	case "$b" in [0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9][.:][0-2][0-9][h:][0-6][0-9][-:]*) echo "$b $d/$b";;
@@ -107,12 +111,12 @@ if test -d "$destold"; then
     echo "Ensuring we have at least $n M free"
     if $global_remove; then # filesystem-global remove
       if test -z "$RSYNCINCR_LASTDATES"; then # slow default, always work
-	RSYNCINCR_LASTDATES=`find_ld "$destold"`
+	RSYNCINCR_LASTDATES=$(find_ld "$destold")
       fi
-      freespace=`dfof "$destold"`
+      freespace=$(dfof "$destold")
       if let 'freespace<n' || ! inodesok -q "$destold"; then
 	backup_siblings "$destold" | while read f; do
-	  freespace=`dfof "$destold"`
+	  freespace=$(dfof "$destold")
 	  if let 'freespace>=n' && inodesok "$destold"; then break
 	  else remdir "$freespace" "$f"
 	  fi
@@ -120,7 +124,7 @@ if test -d "$destold"; then
       fi
     else # just remove in dest dir
       for f in "$destold/"[0-9]*; do
-	freespace=`dfof "$destold"`
+	freespace=$(dfof "$destold")
 	if let 'freespace>=n' && inodesok "$destold"; then break
 	else remdir "$freespace" "$f"
 	fi
@@ -129,7 +133,7 @@ if test -d "$destold"; then
     [ -e "$destold/LAST_DATE" ] && echo "Free space is $freespace M, ok"
   else				# remove more than N backups
     p=1
-    for f in `for i in "$destold/"[0-9]*; do echo "$i";done|tac`; do
+    for f in $(for i in "$destold/"[0-9]*; do echo "$i";done|tac); do
       if let 'p>=n'; then remdir '' "$f"; fi; let p++
     done
   fi
@@ -137,8 +141,8 @@ fi
 
 if $only_clean; then exit; fi
 #------------------------------------------------------------ perform backup
-if test -e "$destold/LAST_DATE";then last_date=`cat "$destold/LAST_DATE"`;fi
-if test -z "$last_date"; then last_date=`date -d '-1 sec' +'%Y-%m-%d.%Hh%M'`; fi
+if test -e "$destold/LAST_DATE";then last_date=$(cat "$destold/LAST_DATE");fi
+if test -z "$last_date"; then last_date=$(date -d '-1 sec' +'%Y-%m-%d.%Hh%M'); fi
 
 status=0
 if $snapshot; then		# full snapshot style
@@ -149,7 +153,7 @@ if $snapshot; then		# full snapshot style
   status=$?
   if test -d "$destold/$last_date"; then
     # size: we must find block size and add the rounded sizes of non-link files
-    nb=$(dumpe2fs `df -P "$destold"|tail -1|(read d r;echo $d)` 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
+    nb=$(dumpe2fs $(df -P "$destold"|tail -1|(read d r;echo $d)) 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
     if let 'nb<=0'; then nb=2;fi
     size=$(find "$destold/$last_date" -type d -o \( -type f -links 1 \) -printf '%b\n'|(t=0;while read d;do let t='t+((d+(nb-1))/nb)*nb';done;let tk=t/2;echo $tk) )
     if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
@@ -162,7 +166,7 @@ else				# just archive copy of changed files
     grep -v '^rsync: mkdir ".*" failed: File exists [(]17[)]' 
   status=${PIPESTATUS[0]}
   if test -d "$destold/$last_date"; then 
-    size=`du -ks "$destold/$last_date"|(read s r;echo $s)`
+    size=$(du -ks "$destold/$last_date"|(read s r;echo $s))
     if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
   fi
 fi

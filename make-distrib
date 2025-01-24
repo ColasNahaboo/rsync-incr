@@ -6,7 +6,7 @@ if test -z "$files_repository"; then echo "$USAGE"; exit 1; fi
 
 name=rsync-incr
 dir=/tmp/$name.$$
-rev=`grep '^VERSION=' rsync-incr |head -1|sed -e 's/.*=//'`
+rev=$(grep '^VERSION=' rsync-incr |head -1|sed -e 's/.*=//')
 repo=$files_repository/$name
 
 mkdir -p $dir/$name
