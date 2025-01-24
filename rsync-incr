@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck disable=SC2155
 set -a
 VERSION=1.9beta5
 DATE=2025-01-25
@@ -22,7 +23,7 @@ pbsm=10
 export dellog=/tmp/rsync-incr-deletions.$LOGNAME
 
 #------------------------------------------------------------------ options
-option_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
+options_n=0;snapshot=false;hardlinks="-H";do_gzip=false;global_remove=false
 only_clean=false
 declare -a options
 no_cross_devs=true
@@ -34,17 +35,17 @@ while test -z "${1##-*}" -a -n "$1";do case "$1" in
   --cross-devs) no_cross_devs=false;;
   --clean) only_clean=true;;
   --inodes=*) inodespcmaxpc="${1##*=}";;
-  *) options[options_n]="$1"; let options_n++;;
+  *) options[options_n]="$1"; ((options_n++));;
 esac;shift;done
 
 n="${1%[mM]}"; source="${2%%/}"; dest="${3%%/}"
 if test "$n" = "$1"; then checkspace=false;else checkspace=true; fi
 if test "$#" != 3; then 
    echo "$USAGE";exit 1;fi
-if let 'n<=1'; then echo "$USAGE
+if ((n<=1)); then echo "$USAGE
 N must be > 1";exit 1;fi
-let '( inodespcmaxpc > 50 ) && ( inodespcmaxpc < 100 )' || { echo "Option --inodes=N must have N between 50 and 99, not $inodespcmaxpc"; exit 1; }
-if $no_cross_devs; then options[options_n]="-x"; let options_n++; fi
+(( (inodespcmaxpc > 50) && (inodespcmaxpc < 100) )) || { echo "Option --inodes=N must have N between 50 and 99, not $inodespcmaxpc"; exit 1; }
+if $no_cross_devs; then options[options_n]="-x"; ((options_n++)); fi
 
 #------------------------------------------------------------------ utils
 fsof () { df -P "$1" |tail -1|cut -f 1 -d ' '; }
@@ -58,7 +59,7 @@ inodesok () {
   local silent=false
   [ "$1" = -q ] && silent=true && shift
   local ipc=$(df -imP "$1" |tail -1|grep -oP ' \K[0-9]+(?=%)')
-  if let 'ipc > inodespcmaxpc'; then 
+  if ((ipc > inodespcmaxpc)); then 
     $silent || echo "Not enough free inodes (used: $ipc%), cleaning..."
     return 1
   else
@@ -70,23 +71,24 @@ remdir () {
   local empty=/tmp/empty-dir-for-rsync.$LOGNAME
   local path=$(realpath "$2")
   if test -n "$1"; then echo -n "Only $1 M free, "; fi
-  fgrep -xqs "$path" $dellog && return # is being deleted by another instance
-  echo "$path" >>$dellog
+  grep -F -xqs "$path" "$dellog" && return # is being deleted by another instance
+  echo "$path" >>"$dellog"
   echo "Removing old backup: $2"
   # fast rm ,see https://unix.stackexchange.com/questions/106133/why-is-rm-slow
-  mkdir -p $empty
-  rsync -a --delete --ignore-missing-args $empty/ "$2"/
+  mkdir -p "$empty"
+  rsync -a --delete --ignore-missing-args "$empty"/ "$2"/
   rm -rf "$2"; 
 }
 
 # list all old backups on filesystem, one per line, oldest first
 backup_siblings () {
   local fs=$(fsof "$1") ld d b
-  echo "$RSYNCINCR_LASTDATES" | while read ld; do
+  echo "$RSYNCINCR_LASTDATES" | while read -r ld; do
     lfs=$(fsof "$ld")
     if [[ "$lfs" == "$fs" ]]; then
       d="${ld%/*}"
-      ls -1 "$d" | while read b;do
+      # shellcheck disable=SC2012  
+      ls -1 "$d" | while read -r b;do
 	case "$b" in [0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9][.:][0-2][0-9][h:][0-6][0-9][-:]*) echo "$b $d/$b";;
 	esac
       done
@@ -101,11 +103,11 @@ if test -d "$destold"; then
   if $checkspace; then # remove old versions till we have space
     for i in "$destold/"[0-9]*; do  # take max of N and past backups
       case "$i" in *[0-9]m) psize="${i##*-}";psize="${psize%m}"
-        case pbsm in 
-	  *m) let "psize += ${pbsm%m}";;
-	  *)  let "psize = (psize*(100 + $pbsm))/100";;
+        case "$pbsm" in 
+	  *m) ((psize += ${pbsm%m}));;
+	  *)  ((psize = (psize*(100 + pbsm))/100));;
         esac
-        if let 'psize>n'; then n=$psize; fi
+        if ((psize > n)); then ((n=psize)); fi
       ;; esac
     done
     echo "Ensuring we have at least $n M free"
@@ -114,10 +116,10 @@ if test -d "$destold"; then
 	RSYNCINCR_LASTDATES=$(find_ld "$destold")
       fi
       freespace=$(dfof "$destold")
-      if let 'freespace<n' || ! inodesok -q "$destold"; then
-	backup_siblings "$destold" | while read f; do
+      if ((freespace<n)) || ! inodesok -q "$destold"; then
+	backup_siblings "$destold" | while read -r f; do
 	  freespace=$(dfof "$destold")
-	  if let 'freespace>=n' && inodesok "$destold"; then break
+	  if ((freespace>=n)) && inodesok "$destold"; then break
 	  else remdir "$freespace" "$f"
 	  fi
         done
@@ -125,7 +127,7 @@ if test -d "$destold"; then
     else # just remove in dest dir
       for f in "$destold/"[0-9]*; do
 	freespace=$(dfof "$destold")
-	if let 'freespace>=n' && inodesok "$destold"; then break
+	if ((freespace>=n)) && inodesok "$destold"; then break
 	else remdir "$freespace" "$f"
 	fi
       done
@@ -134,7 +136,7 @@ if test -d "$destold"; then
   else				# remove more than N backups
     p=1
     for f in $(for i in "$destold/"[0-9]*; do echo "$i";done|tac); do
-      if let 'p>=n'; then remdir '' "$f"; fi; let p++
+      if ((p>=n)); then remdir '' "$f"; fi; ((p++))
     done
   fi
 fi
@@ -153,9 +155,10 @@ if $snapshot; then		# full snapshot style
   status=$?
   if test -d "$destold/$last_date"; then
     # size: we must find block size and add the rounded sizes of non-link files
-    nb=$(dumpe2fs $(df -P "$destold"|tail -1|(read d r;echo $d)) 2>&1|grep 'Block size:' |(read l1 l2  b;let b=b/512;echo $b) )
-    if let 'nb<=0'; then nb=2;fi
-    size=$(find "$destold/$last_date" -type d -o \( -type f -links 1 \) -printf '%b\n'|(t=0;while read d;do let t='t+((d+(nb-1))/nb)*nb';done;let tk=t/2;echo $tk) )
+    devfs=$(df -P "$destold"|tail -1|(read -r d _;echo "$d"))
+    nb=$(dumpe2fs "$devfs" 2>&1|grep 'Block size:' |(read -r _ _ b;((b=b/512));echo "$b") )
+    if ((nb<=0)); then nb=2;fi
+    size=$(find "$destold/$last_date" -type d -o \( -type f -links 1 \) -printf '%b\n'|(t=0;while read -r d;do ((t += ((d+(nb-1))/nb)*nb));done;((tk=t/2));echo "$tk") )
     if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
   fi
 else				# just archive copy of changed files
@@ -166,12 +169,12 @@ else				# just archive copy of changed files
     grep -v '^rsync: mkdir ".*" failed: File exists [(]17[)]' 
   status=${PIPESTATUS[0]}
   if test -d "$destold/$last_date"; then 
-    size=$(du -ks "$destold/$last_date"|(read s r;echo $s))
+    size=$(du -ks "$destold/$last_date"|(read -r s _;echo "$s"))
     if $do_gzip; then gzip -9 -r "$destold/$last_date"; fi
   fi
 fi
 if test -e "$destold/$last_date"; then 
-  let msize='(size+1023)/1024'
+  ((msize = (size+1023)/1024))
   mv "$destold/$last_date" "$destold/$last_date-${msize}m"
   echo "Size used by this backup: $msize m"
 fi
@@ -180,5 +183,5 @@ if test "$status" = 0 -o "$status" = 24; then
   exit 0
 else
   echo "*** ERROR: rsync returned code $status" 1>&2
-  exit $status
+  exit "$status"
 fi
