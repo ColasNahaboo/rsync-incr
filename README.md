@@ -16,6 +16,3 @@ I wanted to have a backup system with the following properties:
 - Installation: just copy the bash script [rsync-incr](rsync-incr) into your PATH (e.g, `/usr/local/bin`)
 - License: GPL V3
 
-
-
-### 

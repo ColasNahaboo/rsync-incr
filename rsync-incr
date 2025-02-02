@@ -2,7 +2,7 @@
 # shellcheck disable=SC2155
 set -a
 VERSION=1.9beta5
-DATE=2025-01-25
+DATE=2025-02-02
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
