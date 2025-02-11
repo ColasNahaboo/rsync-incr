@@ -1,8 +1,8 @@
 #!/bin/bash
 # shellcheck disable=SC2155
 set -a
-VERSION=1.9beta5
-DATE=2025-02-02
+VERSION=1.10
+DATE=2025-02-11
 
 USAGE="rsync-incr [options] N sourcedir destdir
 rsync-incr is a wrapper shell script around rsync to perform automated,
@@ -88,13 +88,26 @@ backup_siblings () {
     if [[ "$lfs" == "$fs" ]]; then
       d="${ld%/*}"
       # shellcheck disable=SC2012  
-      ls -1 "$d" | while read -r b;do
+      while read -r b;do
 	case "$b" in [0-9][0-9][0-9][0-9]-[01][0-9]-[0-3][0-9][.:][0-2][0-9][h:][0-6][0-9][-:]*) echo "$b $d/$b";;
 	esac
-      done
+        # the find below is equivalent to 'ls -1A', but more robust
+      done < <(find "$d" -mindepth 1  -maxdepth 1 | sed -re 's|^.*/||' | sort)
     fi
   done | sort | cut -f 2 -d ' '
 }
+
+# a "date" function that we can redefine for testing
+# by setting DATE_TESTMODE to a number of seconds from 1970-01-01
+# e.g. to start test always at 2000-11-22T12:34:56Z, do before testing:
+# export DATE_TESTMODE=$(date -d '2000-11-22T12:34:56Z' +%s)
+if [[ -n "$DATE_TESTMODE" ]]; then
+    rsdate(){ date -d "@$DATE_TESTMODE" +'%Y-%m-%d.%Hh%M';}
+    rsdate1s(){ date -d "@$((DATE_TESTMODE - 1))" +'%Y-%m-%d.%Hh%M';}
+else
+    rsdate(){ date +'%Y-%m-%d.%Hh%M';}
+    rsdate1s(){ date -d "-1 sec" +'%Y-%m-%d.%Hh%M';}
+fi
 
 #--------------------------------------------------------- clean old backups
 case "$dest" in /*)destold="$dest.$EXT";;*)destold="$PWD/$dest.$EXT";; esac
@@ -144,7 +157,7 @@ fi
 if $only_clean; then exit; fi
 #------------------------------------------------------------ perform backup
 if test -e "$destold/LAST_DATE";then last_date=$(cat "$destold/LAST_DATE");fi
-if test -z "$last_date"; then last_date=$(date -d '-1 sec' +'%Y-%m-%d.%Hh%M'); fi
+if test -z "$last_date"; then last_date=$(rsdate1s); fi
 
 status=0
 if $snapshot; then		# full snapshot style
@@ -176,9 +189,9 @@ fi
 if test -e "$destold/$last_date"; then 
   ((msize = (size+1023)/1024))
   mv "$destold/$last_date" "$destold/$last_date-${msize}m"
-  echo "Size used by this backup: $msize m"
+  # echo "Size used by this backup: $msize m"
 fi
-date +'%Y-%m-%d.%Hh%M' >"$destold/LAST_DATE"
+rsdate >"$destold/LAST_DATE"
 if test "$status" = 0 -o "$status" = 24; then
   exit 0
 else

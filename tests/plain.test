@@ -1,0 +1,97 @@
+#!/bin/bash
+# shellcheck disable=SC1090,SC2155 # source files, declare&assign
+# run via tewiba
+[ -n "$TEWIBA" ] || exec tewiba -v "$0"
+
+. lib-fpak.bash                    # utils to compare files hierarchy
+PATH="$(realpath ..):$PATH"     # use the rsync-incr to test
+# start test always at 2000-11-22T12:34:56Z
+date_testmode=$(date -d '2000-11-22T12:34:56Z' +%s)
+
+# rsync-incrs cannot be called too close, or some backups may be missed
+post_rsync(){ sleep 0.5;}
+
+# the example in https://colas.nahaboo.net/Code/RsyncIncrDetailedExample
+
+detailed_example(){
+    name="$1"
+    dn="$2"
+    dir="$tmp/$dn"
+    bak="$tmp/backups"
+    rm -rf "$tmp"; mkdir "$tmp"
+    export DATE_TESTMODE=$date_testmode
+    export FPAK_LEN=32          # to see dates in full
+
+    TEST "day1-$name"
+
+    # We set up the source 
+    fpaku "$dir/B=bbb|;$dir/C=ccc|;$dir/D=ddd|"
+
+    # backup normally
+    DATE_TESTMODE=$((date_testmode + 24*3600))
+    rsync-incr 5 "$dir" "$bak/$dn"
+    post_rsync
+    
+    # check result
+    expected="$dn/B=bbb|
+$dn/C=ccc|
+$dn/D=ddd|
+$dn.past/LAST_DATE=2000-11-23.13h34|"
+    DOTEST -l "day1-normal-$name" -o "$expected" fpakl "$bak"
+
+    # We backup with --snap
+    DATE_TESTMODE=$((date_testmode + 2*24*3600))
+    rsync-incr --snap 5 "$dir" "$bak--snap/$dn"
+    post_rsync
+
+    expected="$dn/B=bbb|
+$dn/C=ccc|
+$dn/D=ddd|
+$dn.past/2000-11-24.13h34-0m/
+$dn.past/LAST_DATE=2000-11-24.13h34|"
+    DOTEST -l day1-snap-"$name" -o "$expected" fpakl "$bak--snap"
+
+    TEST "day2-$name"
+
+    # add a new A file, B unchanged, modify C file contents, delete D
+    rm "$dir/D"; echo aaa >"$dir/A"; echo CCC >"$dir/C"
+
+    # We backup normally
+    DATE_TESTMODE=$((date_testmode + 3*24*3600)) # advance to next day
+    rsync-incr 5 "$dir" "$bak/$dn"
+    post_rsync
+
+    expected="$dn/A=aaa|
+$dn/B=bbb|
+$dn/C=CCC|
+$dn.past/2000-11-23.13h34-1m/C=ccc|
+$dn.past/2000-11-23.13h34-1m/D=ddd|
+$dn.past/LAST_DATE=2000-11-25.13h34|"
+    DOTEST -l day2-normal-"$name" -o "$expected" fpakl "$bak"
+
+    # We backup with --snap
+    DATE_TESTMODE=$((date_testmode + 4*24*3600))
+    rsync-incr --snap 5 "$dir" "$bak--snap/$dn"
+    post_rsync
+
+    expected="$dn/A=aaa|
+$dn/B=bbb|
+$dn/C=CCC|
+$dn.past/2000-11-24.13h34-0m/
+$dn.past/2000-11-24.13h34-1m/B=bbb|
+$dn.past/2000-11-24.13h34-1m/C=ccc|
+$dn.past/2000-11-24.13h34-1m/D=ddd|
+$dn.past/LAST_DATE=2000-11-26.13h34|"
+    DOTEST -l day2-snap-"$name" -o "$expected" fpakl "$bak--snap"
+}
+
+##################################################################
+
+#### The tests with different types of dir names
+
+detailed_example plain dir      # Plain names
+detailed_example spaces 'd r'   # Names with spaces in them
+detailed_example dash '-dir'    # Names atarting with a dash
+detailed_example dot '.dir'     # Names atarting with a dot
+
+TEND

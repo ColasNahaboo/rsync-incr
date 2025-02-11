@@ -1,0 +1,75 @@
+#!/bin/bash
+# shellcheck disable=SC1090,SC2155 # source files, declare&assign
+# run via tewiba
+[ -n "$TEWIBA" ] || exec tewiba -v "$0"
+
+. lib-fpak.bash
+TEST fpak normal
+rm -rf $tmp; mkdir -p $tmp
+echo 1 >$tmp/a
+DOTEST -l t1 -o "a=1|" fpak "$tmp"
+echo 2 >$tmp/b
+DOTEST -l t2 -o "a=1|;b=2|" fpak "$tmp"
+mkdir -p $tmp/c
+DOTEST -l t3 -o "a=1|;b=2|;c/" fpak "$tmp"
+mkdir -p $tmp/c/d/e
+DOTEST -l t4 -o "a=1|;b=2|;c/d/e/" fpak "$tmp"
+DOTEST -l t5 -o $'a=1|\nb=2|\nc/d/e/' fpakl "$tmp"
+echo 3 >$tmp/c/d/e/f
+DOTEST -l t6 -o $'a=1|\nb=2|\nc/d/e/f=3|' fpakl "$tmp"
+rm -rf $tmp; mkdir -p $tmp
+echo CCC >"$tmp/C"
+mkdir -p $tmp/p/q
+echo ccc >"$tmp/p/q/C"
+DOTEST -l tc1 -o "C=CCC|;p/q/C=ccc|" fpak "$tmp"
+DOTEST -l tc2 -o "C=CCC|${nl}p/q/C=ccc|" fpakl "$tmp"
+
+TEST fpak files with spaces
+rm -rf $tmp; mkdir -p $tmp
+echo 1 >$tmp/'a a'
+DOTEST -l ts1 -o "a a=1|" fpak "$tmp"
+mkdir -p $tmp/'c c'
+DOTEST -l ts3 -o "a a=1|;c c/" fpak "$tmp"
+mkdir -p $tmp/'c c/d d/e e'
+DOTEST -l ts4 -o "a a=1|;c c/d d/e e/" fpak "$tmp"
+DOTEST -l ts5 -o $'a a=1|\nc c/d d/e e/' fpakl "$tmp"
+echo 3 >$tmp/'c c/d d/e e/f f'
+DOTEST -l ts6 -o $'a a=1|\nc c/d d/e e/f f=3|' fpakl "$tmp"
+
+TEST fpak dot-prefixed names
+rm -rf $tmp; mkdir -p $tmp
+echo 1 >$tmp/.a
+DOTEST -l td1 -o ".a=1|" fpak "$tmp"
+mkdir -p $tmp/.c/.d/.e
+DOTEST -l td4 -o ".a=1|;.c/.d/.e/" fpak "$tmp"
+DOTEST -l td5 -o $'.a=1|\n.c/.d/.e/' fpakl "$tmp"
+echo 3 >$tmp/.c/.d/.e/.f
+DOTEST -l td6 -o $'.a=1|\n.c/.d/.e/.f=3|' fpakl "$tmp"
+
+TEST fpak minus-prefixed names
+rm -rf $tmp; mkdir -p $tmp
+echo 1 >$tmp/-a
+DOTEST -l tm1 -o "-a=1|" fpak "$tmp"
+mkdir -p $tmp/-c/-d/-e
+DOTEST -l tm4 -o "-a=1|;-c/-d/-e/" fpak "$tmp"
+DOTEST -l tm5 -o $'-a=1|\n-c/-d/-e/' fpakl "$tmp"
+echo 3 >$tmp/-c/-d/-e/-f
+DOTEST -l tm6 -o $'-a=1|\n-c/-d/-e/-f=3|' fpakl "$tmp"
+
+TEST checksums
+rm -rf $tmp; mkdir -p $tmp/d
+echo "12345678901234567" >$tmp/a
+echo "a;b" >$tmp/d/b
+echo $'a\nb' >$tmp/c
+echo 'a|b' >$tmp/e
+echo 'ab' >$tmp/f
+DOTEST -l checksums -o 'a:419104712,18;c=a|b|;d/b:1074567194,4;e:2375939620,4;f:175966297,4' fpak "$tmp"
+
+TEST fpaku
+rm -rf $tmp
+fpaku "$tmp/a=1|;$tmp/b=2|;$tmp/c/d/e/"
+exp=$'a f 2\nb f 2\nc d '$(stat -c %s $tmp/c)
+got=$(find "${tmp}" -mindepth 1 -maxdepth 1 -printf '%P %y %s\n' | sort)
+DOTEST -l fpaku -o "$exp" echo "$got"
+
+TEND
